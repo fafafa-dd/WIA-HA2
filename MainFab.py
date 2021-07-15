@@ -2,6 +2,8 @@ import numpy as np
 import json
 import reading_splitting_dataset_functions
 import time
+import matplotlib.pyplot as plt
+    
 
 """
 Zum Ausführen in der Shell:::
@@ -112,10 +114,103 @@ def getTruncatedData(erlaubteAbweichungRelativLinks, erlaubteAbweichungRelativRe
            np.ndarray( (c,),buffer=np.array([lha_roi[i] for i in IndexListe]) ),\
            np.ndarray( (c,),buffer=np.array([l_roi[i] for i in IndexListe]) )
 
+def seqNet():
+    from sklearn.preprocessing import LabelBinarizer
+    from sklearn.metrics import classification_report
+
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import Dense
+    from tensorflow.keras.optimizers import SGD
+    from tensorflow.keras.datasets import mnist
+    from tensorflow.keras import backend as K
+    #import argparse
+
+    """
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-o", "--output", required=True,
+            help="path to the output loss/accuracy plot")
+    args = vars(ap.parse_args())
+    """
+
+    # grab the MNIST dataset (if this is your first time using this
+    # dataset then the 11MB download may take a minute)
+    # print("[INFO] accessing MNIST...")
+    #((trainX, trainY), (testX, testY)) = mnist.load_data()
+
+    # each image in the MNIST dataset is represented as a 28x28x1
+    # image, but in order to apply a standard neural network we must
+    # first "flatten" the image to be simple list of 28x28=784 pixels
+    #trainX = trainX.reshape((trainX.shape[0], 28 * 28 * 1))
+    #testX = testX.reshape((testX.shape[0], 28 * 28 * 1))
+    # scale data to the range of [0, 1]
+    #trainX = trainX.astype("float32") / 255.0
+    #testX = testX.astype("float32") / 255.0
+
+
+    # convert the labels from integers to vectors
+    lb = LabelBinarizer()
+    #trainY = lb.fit_transform(trainY)
+    #testY = lb.transform(testY)
+    #trainY = lb.fit_transform(trainY)
+    #testY = lb.transform(testY)
+    
+    df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getData()
+    before = []
+    x_train, y_train, x_test, y_test, before  =  \
+             reading_splitting_dataset_functions.train_test_split_cross_validation(fid_roi, df_roi, l_roi, before)
+
+    x_train, y_train, x_test, y_test  =  \
+             reading_splitting_dataset_functions.bring_in_right_shape_self(x_train, y_train, x_test, y_test)
+
+    # define the 784-256-128-10 architecture using Keras
+    model = Sequential()
+    #model.add(Dense(256, input_shape=(len(x_train[0]),), activation="sigmoid")) ursprünglich
+    model.add(Dense(256, activation="sigmoid"))
+    model.add(Dense(128, activation="sigmoid"))
+    model.add(Dense(4, activation="softmax"))
+
+
+    # train the model using SGD
+    # print("[INFO] training network...")
+    sgd = SGD(0.01)
+    numberOfEpochs = 100
+    model.compile(loss="categorical_crossentropy", optimizer=sgd,
+            metrics=["accuracy"])
+    H = model.fit(x_train, y_train, validation_data=(x_test, y_test),
+            epochs=numberOfEpochs, batch_size=128)
+    #ursprünglich 100 epochen
+
+    # evaluate the network
+    # print("[INFO] evaluating network...")
+    predictions = model.predict(x_test, batch_size=128)
+    """
+    print(classification_report(y_test.argmax(axis=1),
+            predictions.argmax(axis=1),
+            target_names=[str(x) for x in lb.classes_]))
+    """
+    
+    # plot the training loss and accuracy
+    plt.style.use("ggplot")
+    plt.figure()
+    plt.plot(np.arange(0, numberOfEpochs), H.history["loss"], label="train_loss")
+    plt.plot(np.arange(0, numberOfEpochs), H.history["val_loss"], label="val_loss")
+    plt.plot(np.arange(0, numberOfEpochs), H.history["accuracy"], label="train_acc")
+    plt.plot(np.arange(0, numberOfEpochs), H.history["val_accuracy"], label="val_acc")
+    plt.title("Training Loss and Accuracy")
+    plt.xlabel("Epoch #")
+    plt.ylabel("Loss/Accuracy")
+    plt.legend()
+    plt.savefig("PLOTPLOT.png")
+    
+    return H
+
+
+
 if(__name__ == "__main__"):
     startTime = time.time()
 
     print("Main beginnt")
+    """
     df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getData()
     
     Durchläufe = 3
@@ -124,7 +219,8 @@ if(__name__ == "__main__"):
     training_loss = np.zeros(Durchläufe)
     training_acc = np.zeros(Durchläufe)
     before = []
-
+    
+    #TODO BEFORE LISTE FÜLLEN
     #hier schleifenbeginn
     
     x_train, y_train, x_test, y_test, before  =  \
@@ -135,14 +231,13 @@ if(__name__ == "__main__"):
 
     df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(2.0, 2.0)
     print("len(v_roi)=",len(v_roi))
+    """
 
 
 
 
-
-
+    """
     #Generiert plot der Geschwindigkeiten
-    import matplotlib.pyplot as plt
     sorted_v_roi=np.sort(v_roi)
     plt.plot(sorted_v_roi, label='Messdaten', color='blue')
     plt.ylabel('Geschwindigkeiten')
@@ -150,8 +245,11 @@ if(__name__ == "__main__"):
     plt.grid()
     plt.legend()
     plt.show()
-
-
+    """
+    
+    print('seqNet Anfang')
+    H= seqNet()
+    print('seqNet Ende')
 
     endTime = time.time()
     print("ExecTime: ", endTime - startTime)
