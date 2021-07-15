@@ -133,12 +133,23 @@ if(__name__ == "__main__"):
     x_train, y_train, x_test, y_test  =  \
              reading_splitting_dataset_functions.bring_in_right_shape_self(x_train, y_train, x_test, y_test)
 
-    df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(0.005, 0.005)
+    df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(2.0, 2.0)
     print("len(v_roi)=",len(v_roi))
 
 
 
 
+
+
+    #Generiert plot der Geschwindigkeiten
+    import matplotlib.pyplot as plt
+    sorted_v_roi=np.sort(v_roi)
+    plt.plot(sorted_v_roi, label='Messdaten', color='blue')
+    plt.ylabel('Geschwindigkeiten')
+    plt.axhline(y=np.mean(sorted_v_roi), xmin=0, xmax=len(sorted_v_roi), label='Durchschnittsgeschwindigkeit '+str(np.mean(sorted_v_roi)), color='red')
+    plt.grid()
+    plt.legend()
+    plt.show()
 
 
 
