@@ -3,7 +3,23 @@ import json
 import reading_splitting_dataset_functions
 import time
 import matplotlib.pyplot as plt
-    
+
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.metrics import classification_report
+
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras import backend as K
+import keras
+import keras_metrics
+
+import tensorflow.python.util.deprecation as deprecation
+deprecation._PRINT_DEPRECATION_WARNINGS = False
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 """
 Zum Ausführen in der Shell:::
@@ -112,67 +128,45 @@ def getTruncatedDataAsymmetrical(erlaubteAbweichungRelativLinks, erlaubteAbweich
 def getTruncatedData(erlaubteAbweichungRelativ):
     return getTruncatedDataAsymmetrical(erlaubteAbweichungRelativ, erlaubteAbweichungRelativ)
 
-def seqNet(x_train, y_train, x_test, y_test, before):
-    from sklearn.preprocessing import LabelBinarizer
-    from sklearn.metrics import classification_report
-
-    import tensorflow as tf
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import Dense
-    from tensorflow.keras.optimizers import SGD
-    from tensorflow.keras.datasets import mnist
-    from tensorflow.keras import backend as K
-    #import argparse
-
-    """
-    ap = argparse.ArgumentParser()
-    ap.add_argument("-o", "--output", required=True,
-            help="path to the output loss/accuracy plot")
-    args = vars(ap.parse_args())
-    """
-
-    # grab the MNIST dataset (if this is your first time using this
-    # dataset then the 11MB download may take a minute)
-    # print("[INFO] accessing MNIST...")
-    #((trainX, trainY), (testX, testY)) = mnist.load_data()
-
-    # each image in the MNIST dataset is represented as a 28x28x1
-    # image, but in order to apply a standard neural network we must
-    # first "flatten" the image to be simple list of 28x28=784 pixels
-    #trainX = trainX.reshape((trainX.shape[0], 28 * 28 * 1))
-    #testX = testX.reshape((testX.shape[0], 28 * 28 * 1))
-    # scale data to the range of [0, 1]
-    #trainX = trainX.astype("float32") / 255.0
-    #testX = testX.astype("float32") / 255.0
-
-
+# AUFGABE 1+2
+def seqNet(df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi):
+    
+    
     # convert the labels from integers to vectors
     lb = LabelBinarizer()
-    #trainY = lb.fit_transform(trainY)
-    #testY = lb.transform(testY)
-    #trainY = lb.fit_transform(trainY)
-    #testY = lb.transform(testY)
 
-    CrossValDurchläufe = 3
-    lossVec         = np.zeros(CrossValDurchläufe)
-    accuracyVec     = np.zeros(CrossValDurchläufe)
-    val_lossVec     = np.zeros(CrossValDurchläufe)
-    val_accuracyVec = np.zeros(CrossValDurchläufe)
+    CrossValDurchläufe = 4
+    lossVec          = np.zeros(CrossValDurchläufe)
+    accuracyVec      = np.zeros(CrossValDurchläufe)
+    val_lossVec      = np.zeros(CrossValDurchläufe)
+    val_accuracyVec  = np.zeros(CrossValDurchläufe)
+    precisionVec     = np.zeros(CrossValDurchläufe)
+    val_precisionVec = np.zeros(CrossValDurchläufe)
+    recallVec        = np.zeros(CrossValDurchläufe)
+    val_recallVec    = np.zeros(CrossValDurchläufe)
     before = []
 
     for i in range(CrossValDurchläufe):
         print("Durchlauf "+str(i+1)+ "/"+str(CrossValDurchläufe))
+
+        before = []
         
-        # define the 784-256-128-10 architecture using Keras
+        x_train, y_train, x_test, y_test, before  =  \
+                 reading_splitting_dataset_functions.train_test_split_cross_validation(fid_roi, df_roi, l_roi, before)
+
+        x_train, y_train, x_test, y_test  =  \
+                 reading_splitting_dataset_functions.bring_in_right_shape_self(x_train, y_train, x_test, y_test)
+        
+        # define the 1536-256-128-10 architecture using Keras
         model = Sequential()
 
         #Ürsprüngliche Version
-        #model.add(Dense(256, activation="sigmoid"))
+        #model.add(Dense(256, activation="sigmoid")) # oder 'softmax', 'tanh', 'relu'
         #model.add(Dense(128, activation="sigmoid"))
 
         #Verbesserung 1 Kernelregularizer
-        model.add(Dense(256, kernel_regularizer=tf.keras.regularizers.l2(), activation="relu"))
-        model.add(Dense(128, kernel_regularizer=tf.keras.regularizers.l2(), activation="relu"))
+        model.add(Dense(256, kernel_regularizer=tf.keras.regularizers.l2(), activation="tanh"))
+        model.add(Dense(128, kernel_regularizer=tf.keras.regularizers.l2(), activation="tanh"))
 
         
         #Verbesserung 2 Dropoutlayer
@@ -186,7 +180,7 @@ def seqNet(x_train, y_train, x_test, y_test, before):
         sgd = SGD(0.01)
         numberOfEpochs = 50
         model.compile(loss="categorical_crossentropy", optimizer=sgd,
-                metrics=["accuracy"])
+                metrics=["accuracy", keras_metrics.precision(), keras_metrics.recall()])
         H = model.fit(x_train, y_train, validation_data=(x_test, y_test),
                 epochs=numberOfEpochs, batch_size=128)
         #ursprünglich 100 epochen
@@ -200,10 +194,14 @@ def seqNet(x_train, y_train, x_test, y_test, before):
                 target_names=[str(x) for x in lb.classes_]))
         """
 
-        lossVec[i]         = H.history["loss"][-1]
-        accuracyVec[i]     = H.history["accuracy"][-1]
-        val_lossVec[i]     = H.history["val_loss"][-1]
-        val_accuracyVec[i] = H.history["val_accuracy"][-1]
+        lossVec[i]          = H.history["loss"][-1]
+        accuracyVec[i]      = H.history["accuracy"][-1]
+        val_lossVec[i]      = H.history["val_loss"][-1]
+        val_accuracyVec[i]  = H.history["val_accuracy"][-1]
+        precisionVec[i]     = H.history["precision"][-1]
+        val_precisionVec[i] = H.history["val_precision"][-1]
+        recallVec[i]        = H.history["recall"][-1]
+        val_recallVec[i]    = H.history["val_recall"][-1]
 
         #print("ACCUARCY TEST PPRINT\n"+str(H.history["accuracy"])+"\n\n\n")
         
@@ -224,6 +222,10 @@ def seqNet(x_train, y_train, x_test, y_test, before):
     print("val_loss der "+str(numberOfEpochs)+" Epochen: "+ str(val_lossVec) + "  ~~~~~~~> "+str(np.mean(val_lossVec)))
     print("accuracy der "+str(numberOfEpochs)+" Epochen: "+ str(accuracyVec) + "  ~~~~~~~> "+str(np.mean(accuracyVec)))
     print("val_accuracy der "+str(numberOfEpochs)+" Epochen: "+ str(val_accuracyVec) + "  ~~~~~~~> "+str(np.mean(val_accuracyVec)))
+    print("precision der "+str(numberOfEpochs)+" Epochen: "+ str(precisionVec) + "  ~~~~~~~> "+str(np.mean(precisionVec)))
+    print("val_precision der "+str(numberOfEpochs)+" Epochen: "+ str(val_precisionVec) + "  ~~~~~~~> "+str(np.mean(val_precisionVec)))
+    print("recall der "+str(numberOfEpochs)+" Epochen: "+ str(recallVec) + "  ~~~~~~~> "+str(np.mean(recallVec)))
+    print("val_recall der "+str(numberOfEpochs)+" Epochen: "+ str(val_recallVec) + "  ~~~~~~~> "+str(np.mean(val_recallVec)))
     
     return H
 
@@ -272,22 +274,13 @@ if(__name__ == "__main__"):
     
     print('seqNet Anfang')
     #ALLE DATEN
-    #df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getData()
+    df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getData()
 
     #TRUNCATED DATA
-    df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(0.2)
-
-    before = []
-    
-    x_train, y_train, x_test, y_test, before  =  \
-                 reading_splitting_dataset_functions.train_test_split_cross_validation(fid_roi, df_roi, l_roi, before)
-
-    x_train, y_train, x_test, y_test  =  \
-                 reading_splitting_dataset_functions.bring_in_right_shape_self(x_train, y_train, x_test, y_test)
-    
+    #df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(0.1)
 
     
-    H= seqNet(x_train, y_train, x_test, y_test, before)
+    H = seqNet(df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi)
     print('seqNet Ende')
 
     endTime = time.time()
