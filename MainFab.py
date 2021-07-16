@@ -90,7 +90,7 @@ np.mean(v_roi) = 8.043573554557916
 np.min(v_roi) = 0.0
 np.max(v_roi) = 17.472413793103446
 """
-def getTruncatedData(erlaubteAbweichungRelativLinks, erlaubteAbweichungRelativRechts):
+def getTruncatedDataAsymmetrical(erlaubteAbweichungRelativLinks, erlaubteAbweichungRelativRechts):
     print("getTruncatedData() : getData() wird aufgerufen")
     df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getData()
 
@@ -98,26 +98,25 @@ def getTruncatedData(erlaubteAbweichungRelativLinks, erlaubteAbweichungRelativRe
     l            = erlaubteAbweichungRelativLinks*Durchschnitt
     r            = erlaubteAbweichungRelativRechts*Durchschnitt
     
-    IndexListe = []
-    for i in range(len(v_roi)):
-        if ( (v_roi[i] > Durchschnitt - l) & (v_roi[i] < Durchschnitt + r) ):
-            IndexListe.append(i)
-
-    c = len(IndexListe)
+    mask       = [ [True if ( (v_roi[i] > Durchschnitt - l) & (v_roi[i] < Durchschnitt + r) )\
+                         else False for i in range(len(v_roi)) ] ]
+    c = sum([1 if mask[0][i]==True else 0 for i in range(len(mask[0]))])
 
     print("Truncation:", Durchschnitt-l, "|", Durchschnitt, "|", Durchschnitt+r, "führt zu ", c, "/", len(v_roi), "Datensätzen")
 
-    return np.ndarray( (c,),buffer=np.array([df_roi[i] for i in IndexListe]) ),\
-           np.ndarray( (c,),buffer=np.array([fid_roi[i] for i in IndexListe]) ),\
-           np.ndarray( (c,),buffer=np.array([v_roi[i] for i in IndexListe]) ),\
-           np.ndarray( (c,),buffer=np.array([lva_roi[i] for i in IndexListe]) ),\
-           np.ndarray( (c,),buffer=np.array([lha_roi[i] for i in IndexListe]) ),\
-           np.ndarray( (c,),buffer=np.array([l_roi[i] for i in IndexListe]) )
+    return df_roi[tuple(mask)], fid_roi[tuple(mask)], v_roi[tuple(mask)], \
+           lva_roi[tuple(mask)], lha_roi[tuple(mask)], l_roi[tuple(mask)]
 
-def seqNet():
+
+
+def getTruncatedData(erlaubteAbweichungRelativ):
+    return getTruncatedDataAsymmetrical(erlaubteAbweichungRelativ, erlaubteAbweichungRelativ)
+
+def seqNet(x_train, y_train, x_test, y_test, before):
     from sklearn.preprocessing import LabelBinarizer
     from sklearn.metrics import classification_report
 
+    import tensorflow as tf
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.layers import Dense
     from tensorflow.keras.optimizers import SGD
@@ -153,54 +152,78 @@ def seqNet():
     #testY = lb.transform(testY)
     #trainY = lb.fit_transform(trainY)
     #testY = lb.transform(testY)
-    
-    df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getData()
+
+    CrossValDurchläufe = 3
+    lossVec         = np.zeros(CrossValDurchläufe)
+    accuracyVec     = np.zeros(CrossValDurchläufe)
+    val_lossVec     = np.zeros(CrossValDurchläufe)
+    val_accuracyVec = np.zeros(CrossValDurchläufe)
     before = []
-    x_train, y_train, x_test, y_test, before  =  \
-             reading_splitting_dataset_functions.train_test_split_cross_validation(fid_roi, df_roi, l_roi, before)
 
-    x_train, y_train, x_test, y_test  =  \
-             reading_splitting_dataset_functions.bring_in_right_shape_self(x_train, y_train, x_test, y_test)
+    for i in range(CrossValDurchläufe):
+        print("Durchlauf "+str(i+1)+ "/"+str(CrossValDurchläufe))
+        
+        # define the 784-256-128-10 architecture using Keras
+        model = Sequential()
 
-    # define the 784-256-128-10 architecture using Keras
-    model = Sequential()
-    #model.add(Dense(256, input_shape=(len(x_train[0]),), activation="sigmoid")) ursprünglich
-    model.add(Dense(256, activation="sigmoid"))
-    model.add(Dense(128, activation="sigmoid"))
-    model.add(Dense(4, activation="softmax"))
+        #Ürsprüngliche Version
+        #model.add(Dense(256, activation="sigmoid"))
+        #model.add(Dense(128, activation="sigmoid"))
+
+        #Verbesserung 1 Kernelregularizer
+        model.add(Dense(256, kernel_regularizer=tf.keras.regularizers.l2(), activation="relu"))
+        model.add(Dense(128, kernel_regularizer=tf.keras.regularizers.l2(), activation="relu"))
+
+        
+        #Verbesserung 2 Dropoutlayer
+        model.add(tf.keras.layers.Dropout(0.25))
+
+        model.add(Dense(4, activation="softmax"))
 
 
-    # train the model using SGD
-    # print("[INFO] training network...")
-    sgd = SGD(0.01)
-    numberOfEpochs = 100
-    model.compile(loss="categorical_crossentropy", optimizer=sgd,
-            metrics=["accuracy"])
-    H = model.fit(x_train, y_train, validation_data=(x_test, y_test),
-            epochs=numberOfEpochs, batch_size=128)
-    #ursprünglich 100 epochen
+        # train the model using SGD
+        # print("[INFO] training network...")
+        sgd = SGD(0.01)
+        numberOfEpochs = 50
+        model.compile(loss="categorical_crossentropy", optimizer=sgd,
+                metrics=["accuracy"])
+        H = model.fit(x_train, y_train, validation_data=(x_test, y_test),
+                epochs=numberOfEpochs, batch_size=128)
+        #ursprünglich 100 epochen
 
-    # evaluate the network
-    # print("[INFO] evaluating network...")
-    predictions = model.predict(x_test, batch_size=128)
-    """
-    print(classification_report(y_test.argmax(axis=1),
-            predictions.argmax(axis=1),
-            target_names=[str(x) for x in lb.classes_]))
-    """
-    
-    # plot the training loss and accuracy
-    plt.style.use("ggplot")
-    plt.figure()
-    plt.plot(np.arange(0, numberOfEpochs), H.history["loss"], label="train_loss")
-    plt.plot(np.arange(0, numberOfEpochs), H.history["val_loss"], label="val_loss")
-    plt.plot(np.arange(0, numberOfEpochs), H.history["accuracy"], label="train_acc")
-    plt.plot(np.arange(0, numberOfEpochs), H.history["val_accuracy"], label="val_acc")
-    plt.title("Training Loss and Accuracy")
-    plt.xlabel("Epoch #")
-    plt.ylabel("Loss/Accuracy")
-    plt.legend()
-    plt.savefig("PLOTPLOT.png")
+        # evaluate the network
+        # print("[INFO] evaluating network...")
+        predictions = model.predict(x_test, batch_size=128)
+        """
+        print(classification_report(y_test.argmax(axis=1),
+                predictions.argmax(axis=1),
+                target_names=[str(x) for x in lb.classes_]))
+        """
+
+        lossVec[i]         = H.history["loss"][-1]
+        accuracyVec[i]     = H.history["accuracy"][-1]
+        val_lossVec[i]     = H.history["val_loss"][-1]
+        val_accuracyVec[i] = H.history["val_accuracy"][-1]
+
+        #print("ACCUARCY TEST PPRINT\n"+str(H.history["accuracy"])+"\n\n\n")
+        
+        # plot the training loss and accuracy
+        plt.style.use("ggplot")
+        plt.figure()
+        plt.plot(np.arange(0, numberOfEpochs), H.history["loss"], label="train_loss")
+        plt.plot(np.arange(0, numberOfEpochs), H.history["val_loss"], label="val_loss")
+        plt.plot(np.arange(0, numberOfEpochs), H.history["accuracy"], label="train_acc")
+        plt.plot(np.arange(0, numberOfEpochs), H.history["val_accuracy"], label="val_acc")
+        plt.title("Training Loss and Accuracy")
+        plt.xlabel("Epoch #")
+        plt.ylabel("Loss/Accuracy")
+        plt.legend()
+        plt.savefig("Aufgabe1_"+str(numberOfEpochs)+"Epo_D"+str(i+1)+".png")
+        
+    print("loss der "+str(numberOfEpochs)+" Epochen: "+ str(lossVec) + "  ~~~~~~~> "+str(np.mean(lossVec)))
+    print("val_loss der "+str(numberOfEpochs)+" Epochen: "+ str(val_lossVec) + "  ~~~~~~~> "+str(np.mean(val_lossVec)))
+    print("accuracy der "+str(numberOfEpochs)+" Epochen: "+ str(accuracyVec) + "  ~~~~~~~> "+str(np.mean(accuracyVec)))
+    print("val_accuracy der "+str(numberOfEpochs)+" Epochen: "+ str(val_accuracyVec) + "  ~~~~~~~> "+str(np.mean(val_accuracyVec)))
     
     return H
 
@@ -248,7 +271,23 @@ if(__name__ == "__main__"):
     """
     
     print('seqNet Anfang')
-    H= seqNet()
+    #ALLE DATEN
+    #df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getData()
+
+    #TRUNCATED DATA
+    df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(0.2)
+
+    before = []
+    
+    x_train, y_train, x_test, y_test, before  =  \
+                 reading_splitting_dataset_functions.train_test_split_cross_validation(fid_roi, df_roi, l_roi, before)
+
+    x_train, y_train, x_test, y_test  =  \
+                 reading_splitting_dataset_functions.bring_in_right_shape_self(x_train, y_train, x_test, y_test)
+    
+
+    
+    H= seqNet(x_train, y_train, x_test, y_test, before)
     print('seqNet Ende')
 
     endTime = time.time()
