@@ -7,6 +7,11 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.metrics import classification_report
 
+import warnings
+warnings.filterwarnings('ignore',category=FutureWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+
+
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
@@ -16,10 +21,15 @@ from tensorflow.keras import backend as K
 import keras
 import keras_metrics
 
-import tensorflow.python.util.deprecation as deprecation
-deprecation._PRINT_DEPRECATION_WARNINGS = False
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+try:
+    from tensorflow.python.util import module_wrapper as deprecation
+except ImportError:
+    from tensorflow.python.util import deprecation_wrapper as deprecation
+deprecation._PER_MODULE_WARNING_LIMIT = 0
+#from tensorflow.python.util import deprecation
+#deprecation._PRINT_DEPRECATION_WARNINGS = False
+#import os
+#os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 """
 Zum Ausführen in der Shell:::
@@ -227,8 +237,36 @@ def seqNet(df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi):
     print("recall der "+str(numberOfEpochs)+" Epochen: "+ str(recallVec) + "  ~~~~~~~> "+str(np.mean(recallVec)))
     print("val_recall der "+str(numberOfEpochs)+" Epochen: "+ str(val_recallVec) + "  ~~~~~~~> "+str(np.mean(val_recallVec)))
     
-    return H
+    return H, (lossVec, accuracyVec, val_lossVec, val_accuracyVec, precisionVec, val_precisionVec, recallVec, val_recallVec)
 
+
+#Aufgabe 3
+def findTruncation():
+    
+    #getesteteWerte = [0.05, 0.1]
+    getesteteWerte = [0.05, 0.1, 0.15, 0.25, 0.5, 0.75, 0.9, 0.95, 1.0, 1.5]
+
+    kopfstring = "loss \t accuracy \t val_loss \t val_accuracy \t precision \t val_precision \t recall \t val_recall"
+    
+    _, _, v_roi, _, _, _ = getData()
+    anzahlDatensätze = len(v_roi)
+    Durch           = np.mean(v_roi)
+    for i in range(len(getesteteWerte)):
+        #TRUNCATED DATA
+        df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(getesteteWerte[i])
+        H, ret = seqNet(df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi)
+        f = open("ErgebinsseAufgabe3.txt", "a")
+        f.write("Erlaubte Abweichung:\t"+str(getesteteWerte[i])+"\n")
+        f.write("Interval:\t"+ str(Durch-Durch*getesteteWerte[i])+ "|"+ str(Durch)+ "|"+ str(Durch+Durch*getesteteWerte[i])+"\n")
+        f.write("Anzahl Datenpunkte:\t"+str(len(l_roi))+"/"+str(anzahlDatensätze)+" gesamt\n")
+        f.write(kopfstring+"\n")
+        for ele in ret:
+            f.write(str(np.mean(ele))+"\t")
+        f.write("\n" + ("_-"*45)+("\n")*3)
+        f.close()
+
+
+    return
 
 
 if(__name__ == "__main__"):
@@ -254,7 +292,7 @@ if(__name__ == "__main__"):
     x_train, y_train, x_test, y_test  =  \
              reading_splitting_dataset_functions.bring_in_right_shape_self(x_train, y_train, x_test, y_test)
 
-    df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(2.0, 2.0)
+    df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(2.0)
     print("len(v_roi)=",len(v_roi))
     """
 
@@ -275,12 +313,13 @@ if(__name__ == "__main__"):
     print('seqNet Anfang')
     #ALLE DATEN
     df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getData()
-
     #TRUNCATED DATA
     #df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi = getTruncatedData(0.1)
 
-    
-    H = seqNet(df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi)
+    #H, _ = seqNet(df_roi, fid_roi, v_roi, lva_roi, lha_roi, l_roi)
+
+    findTruncation()
+
     print('seqNet Ende')
 
     endTime = time.time()
